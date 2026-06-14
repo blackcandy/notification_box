@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose drives the real theming; this is just the splash/launch theme. -->
+    <style name="Theme.NotifBox" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A simple bell glyph centred in the adaptive-icon safe zone. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30 C46,30 40,36 40,44 L40,58 L36,64 L72,64 L68,58 L68,44 C68,36 62,30 54,30 Z M48,68 C48,72 50,74 54,74 C58,74 60,72 60,68 Z" />
+</vector>
