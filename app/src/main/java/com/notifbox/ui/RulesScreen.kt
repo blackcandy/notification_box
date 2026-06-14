@@ -1,6 +1,9 @@
 package com.notifbox.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,24 +16,33 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.notifbox.data.FilterRule
 import com.notifbox.data.MatchType
 import com.notifbox.util.NotificationAccess
@@ -39,13 +51,23 @@ import com.notifbox.util.NotificationAccess
 fun RulesScreen(vm: NotifViewModel) {
     val context = LocalContext.current
     val rules by vm.rules.collectAsState()
+    // Re-check whenever the screen resumes (user may have just granted access).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val accessGranted by produceState(
+        initialValue = NotificationAccess.isGranted(context),
+        lifecycleOwner,
+    ) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            value = NotificationAccess.isGranted(context)
+        }
+    }
 
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(vertical = 12.dp),
     ) {
-        if (!NotificationAccess.isGranted(context)) {
+        if (!accessGranted) {
             item {
                 NbCard {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -66,7 +88,7 @@ fun RulesScreen(vm: NotifViewModel) {
         item { AddRuleForm(onAdd = vm::addRule) }
 
         items(rules, key = { it.id }) { rule ->
-            RuleRow(
+            SwipeableRuleRow(
                 rule = rule,
                 onToggle = { vm.toggleRule(rule) },
                 onDelete = { vm.deleteRule(rule) },
@@ -110,6 +132,42 @@ private fun AddRuleForm(onAdd: (FilterRule) -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("添加规则") }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableRuleRow(rule: FilterRule, onToggle: () -> Unit, onDelete: () -> Unit) {
+    val state = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) { onDelete(); true } else false
+        },
+    )
+    SwipeToDismissBox(
+        state = state,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            val color by animateColorAsState(
+                if (state.targetValue == SwipeToDismissBoxValue.EndToStart)
+                    MaterialTheme.colorScheme.errorContainer
+                else
+                    MaterialTheme.colorScheme.surface,
+                label = "swipe-bg",
+            )
+            Box(
+                Modifier.fillMaxSize().clip(NbCardShape).background(color),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Icon(
+                    Icons.Filled.Delete,
+                    contentDescription = "删除",
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(end = 20.dp),
+                )
+            }
+        },
+    ) {
+        RuleRow(rule = rule, onToggle = onToggle, onDelete = onDelete)
     }
 }
 

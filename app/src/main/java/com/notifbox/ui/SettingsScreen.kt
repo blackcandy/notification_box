@@ -26,12 +26,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.notifbox.util.BatteryOptimization
 import com.notifbox.util.NotificationAccess
 
@@ -44,6 +48,16 @@ fun SettingsScreen(vm: NotifViewModel, onOpenRules: () -> Unit) {
     val retentionDays by vm.retentionDays.collectAsState()
     val rules by vm.rules.collectAsState()
     var confirmClear by remember { mutableStateOf(false) }
+    // Re-check when the screen resumes (user may have just toggled battery optimization).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val isIgnoringBattery by produceState(
+        initialValue = BatteryOptimization.isIgnoring(context),
+        lifecycleOwner,
+    ) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            value = BatteryOptimization.isIgnoring(context)
+        }
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -109,13 +123,12 @@ fun SettingsScreen(vm: NotifViewModel, onOpenRules: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                val ignoring = BatteryOptimization.isIgnoring(context)
                 Button(
                     onClick = { context.startActivity(BatteryOptimization.requestIntent(context)) },
-                    enabled = !ignoring,
+                    enabled = !isIgnoringBattery,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(if (ignoring) "已加入电池白名单 ✓" else "申请加入电池白名单")
+                    Text(if (isIgnoringBattery) "已加入电池白名单 ✓" else "申请加入电池白名单")
                 }
                 OutlinedButton(
                     onClick = { context.startActivity(BatteryOptimization.appDetailsIntent(context)) },

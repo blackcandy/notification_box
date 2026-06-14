@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import com.notifbox.NotifBoxApp
+import com.notifbox.data.FilterRule
 import com.notifbox.data.NotificationEntity
 import com.notifbox.filter.RuleEngine
 import kotlinx.coroutines.CoroutineScope
@@ -28,8 +29,25 @@ class NotifListenerService : NotificationListenerService() {
     /** Cache of package -> app label so we don't hit PackageManager on every notification. */
     private val labelCache = ConcurrentHashMap<String, String>()
 
+    /**
+     * In-memory snapshot of enabled rules, kept current by a Flow collector started in
+     * [onCreate]. Avoids a database round-trip on every incoming notification.
+     */
+    @Volatile private var cachedRules: List<FilterRule> = emptyList()
+
     private val app get() = application as NotifBoxApp
     private val repository get() = app.repository
+
+    override fun onCreate() {
+        super.onCreate()
+        // Start collecting rule changes once — cachedRules stays current for the life
+        // of the service without any per-notification DB query.
+        scope.launch {
+            app.repository.rules.collect { rules ->
+                cachedRules = rules.filter { it.enabled }
+            }
+        }
+    }
 
     /** On (re)connect, drop history older than the user's retention window. */
     override fun onListenerConnected() {
@@ -75,7 +93,7 @@ class NotifListenerService : NotificationListenerService() {
                 if (prev.title == title && prev.text == text) return@launch
             }
             val verdict = RuleEngine.evaluate(
-                rules = repository.enabledRules(),
+                rules = cachedRules,
                 packageName = pkg,
                 title = title,
                 text = text,

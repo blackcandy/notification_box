@@ -8,11 +8,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -20,24 +22,29 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.absoluteValue
 
 /**
- * Circular app icon. Falls back to a coloured initial when the source app isn't
- * installed (or its icon can't be loaded), so every row still reads cleanly.
+ * Circular app icon loaded off the main thread. Falls back to a coloured initial
+ * when the source app isn't installed (or its icon can't be loaded).
  */
 @Composable
 fun AppAvatar(packageName: String, appLabel: String, size: Dp = 42.dp) {
     val context = LocalContext.current
-    val bitmap = remember(packageName) {
-        runCatching {
-            context.packageManager.getApplicationIcon(packageName).toBitmap().asImageBitmap()
-        }.getOrNull()
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, packageName) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                context.packageManager.getApplicationIcon(packageName).toBitmap().asImageBitmap()
+            }.getOrNull()
+        }
     }
 
-    if (bitmap != null) {
+    val b = bitmap
+    if (b != null) {
         Image(
-            bitmap = bitmap,
+            bitmap = b,
             contentDescription = appLabel,
             contentScale = ContentScale.Crop,
             modifier = Modifier.size(size).clip(CircleShape),

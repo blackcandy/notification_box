@@ -45,9 +45,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -64,6 +68,17 @@ import androidx.navigation.compose.rememberNavController
 import com.notifbox.data.NotificationEntity
 import java.text.DateFormat
 import java.util.Date
+
+// DateFormat is not thread-safe; use one instance per thread.
+private val DATE_TIME_FORMAT = ThreadLocal.withInitial {
+    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+}
+
+// Saves only the set of collapsed app labels so collapse state survives config changes.
+private val CollapsedSaver = listSaver<SnapshotStateMap<String, Boolean>, String>(
+    save = { map -> map.filter { it.value }.keys.toList() },
+    restore = { list -> mutableStateMapOf(*list.map { it to true }.toTypedArray()) },
+)
 
 private enum class Tab(val route: String, val label: String) {
     Inbox("inbox", "收件箱"),
@@ -181,23 +196,28 @@ private fun NotificationList(
         return
     }
 
-    var query by rememberSaveable { mutableStateOf("") }
+    var rawQuery by rememberSaveable { mutableStateOf("") }
     var selectedPackage by rememberSaveable { mutableStateOf<String?>(null) }
-    // Apps whose group is collapsed in the inbox. Absent = expanded.
-    val collapsed = remember { mutableStateMapOf<String, Boolean>() }
-    val q = query.trim()
-
-    val visible = items.filter { n ->
-        (selectedPackage == null || n.packageName == selectedPackage) &&
-            (q.isEmpty() ||
-                n.appLabel.contains(q, ignoreCase = true) ||
-                n.title?.contains(q, ignoreCase = true) == true ||
-                n.text?.contains(q, ignoreCase = true) == true)
+    // Collapse state survives config changes via a custom Saver.
+    val collapsed = rememberSaveable(saver = CollapsedSaver) { mutableStateMapOf() }
+    // Debounce the search query: clears immediately, filters after 300 ms of idle typing.
+    val q by produceState(initialValue = "", rawQuery) {
+        if (rawQuery.isBlank()) value = "" else { delay(300); value = rawQuery.trim() }
     }
-    val groups = visible.groupBy { it.appLabel }
-    // Apps that have actually sent notifications, newest first — pinned atop the picker.
-    val messagedApps = items.distinctBy { it.packageName }
-        .map { InstalledApp(it.packageName, it.appLabel) }
+
+    val messagedApps = remember(items) {
+        items.distinctBy { it.packageName }.map { InstalledApp(it.packageName, it.appLabel) }
+    }
+    val visible = remember(items, selectedPackage, q) {
+        items.filter { n ->
+            (selectedPackage == null || n.packageName == selectedPackage) &&
+                (q.isEmpty() ||
+                    n.appLabel.contains(q, ignoreCase = true) ||
+                    n.title?.contains(q, ignoreCase = true) == true ||
+                    n.text?.contains(q, ignoreCase = true) == true)
+        }
+    }
+    val groups = remember(visible) { visible.groupBy { it.appLabel } }
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -211,14 +231,14 @@ private fun NotificationList(
                 messagedApps = messagedApps,
             )
             OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
+                value = rawQuery,
+                onValueChange = { rawQuery = it },
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("搜索通知…") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 trailingIcon = {
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = "" }) {
+                    if (rawQuery.isNotEmpty()) {
+                        IconButton(onClick = { rawQuery = "" }) {
                             Icon(Icons.Filled.Close, contentDescription = "清除")
                         }
                     }
@@ -355,5 +375,4 @@ private fun EmptyState(icon: ImageVector, text: String) {
     }
 }
 
-internal fun formatTime(epoch: Long): String =
-    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(epoch))
+internal fun formatTime(epoch: Long): String = DATE_TIME_FORMAT.get()!!.format(Date(epoch))
