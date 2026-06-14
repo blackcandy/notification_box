@@ -22,6 +22,10 @@ interface NotificationDao {
     @Query("SELECT * FROM notifications WHERE id = :id")
     suspend fun getById(id: Long): NotificationEntity?
 
+    /** Most recent record for a system notification key, used to dedupe re-posts. */
+    @Query("SELECT * FROM notifications WHERE sbnKey = :key ORDER BY postedAt DESC LIMIT 1")
+    suspend fun latestByKey(key: String): NotificationEntity?
+
     @Query("DELETE FROM notifications WHERE postedAt < :cutoff")
     suspend fun deleteOlderThan(cutoff: Long)
 

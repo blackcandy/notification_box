@@ -16,6 +16,8 @@ class NotifRepository(
 
     suspend fun getById(id: Long): NotificationEntity? = notificationDao.getById(id)
 
+    suspend fun latestByKey(key: String): NotificationEntity? = notificationDao.latestByKey(key)
+
     suspend fun enabledRules(): List<FilterRule> = ruleDao.enabledRules()
 
     suspend fun upsertRule(rule: FilterRule) { ruleDao.upsert(rule) }
